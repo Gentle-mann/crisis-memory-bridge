@@ -397,48 +397,63 @@ class HybridMemoryStore(BaseMemoryStore):
 
     def __init__(self):
         self._local = LocalMemoryStore()
-        self._memu_client = None
-        self._memu_service = None
+        self._mode = None  # "cloud" or "self_hosted" or None
+        self._cloud_api_key = None
+        self._cloud_base_url = None
+        self._service = None
         self._init_memu()
 
     def _init_memu(self):
         try:
             api_key = os.getenv("MEMU_API_KEY")
             if api_key:
-                from memu import MemuClient
+                # Cloud mode — use REST API directly (v3 endpoints)
+                import httpx  # already a dependency of memu-py
 
-                self._memu_client = MemuClient(
-                    api_key=api_key,
-                    base_url=os.getenv(
-                        "MEMU_BASE_URL", "https://api-preview.memu.so"
-                    ),
+                self._mode = "cloud"
+                self._cloud_api_key = api_key
+                self._cloud_base_url = os.getenv(
+                    "MEMU_BASE_URL", "https://api.memu.so"
                 )
+                print(f"memU: cloud mode ({self._cloud_base_url})")
             else:
-                from memu import MemUService
+                llm_key = os.getenv("MEMU_LLM_API_KEY")
+                if llm_key:
+                    # Self-hosted mode — use MemoryService from SDK
+                    from memu.app.service import MemoryService
 
-                self._memu_service = MemUService(
-                    llm_profiles={
-                        "default": {
-                            "base_url": os.getenv(
-                                "MEMU_LLM_BASE_URL", "https://api.openai.com/v1"
-                            ),
-                            "api_key": os.getenv("MEMU_LLM_API_KEY", ""),
-                            "chat_model": os.getenv("MEMU_CHAT_MODEL", "gpt-4o"),
-                            "embed_model": os.getenv(
-                                "MEMU_EMBED_MODEL", "text-embedding-3-small"
-                            ),
-                        }
-                    },
-                    database_config={"metadata_store": {"provider": "inmemory"}},
-                )
+                    self._service = MemoryService(
+                        llm_profiles={
+                            "default": {
+                                "base_url": os.getenv(
+                                    "MEMU_LLM_BASE_URL",
+                                    "https://api.openai.com/v1",
+                                ),
+                                "api_key": llm_key,
+                                "chat_model": os.getenv(
+                                    "MEMU_CHAT_MODEL", "gpt-4o"
+                                ),
+                                "embed_model": os.getenv(
+                                    "MEMU_EMBED_MODEL",
+                                    "text-embedding-3-small",
+                                ),
+                            }
+                        },
+                        database_config={
+                            "metadata_store": {"provider": "inmemory"}
+                        },
+                    )
+                    self._mode = "self_hosted"
+                    print("memU: self-hosted mode")
         except Exception as e:
-            print(f"WARNING: memU init failed ({e}), running without semantic layer")
-            self._memu_client = None
-            self._memu_service = None
+            print(
+                f"WARNING: memU init failed ({e}), running without semantic layer"
+            )
+            self._mode = None
 
     @property
     def _memu_available(self) -> bool:
-        return self._memu_client is not None or self._memu_service is not None
+        return self._mode is not None
 
     def _query_memu(self, caller_id: str) -> Optional[str]:
         if not self._memu_available:
@@ -449,26 +464,64 @@ class HybridMemoryStore(BaseMemoryStore):
                 "triggers, effective strategies, safety plan, warnings, situation, "
                 "emotional patterns, and anything else relevant for a counselor."
             )
-            if self._memu_client:
-                result = self._memu_client.retrieve(
-                    query=query, user_id=caller_id
-                )
-            else:
-                import asyncio
+            if self._mode == "cloud":
+                import httpx
 
-                result = asyncio.get_event_loop().run_until_complete(
-                    self._memu_service.retrieve(
-                        queries=[
-                            {"role": "user", "content": {"text": query}}
-                        ],
-                        where={"user_id": caller_id},
-                        method="llm",
-                    )
+                resp = httpx.post(
+                    f"{self._cloud_base_url}/api/v3/memory/retrieve",
+                    headers={
+                        "Authorization": f"Bearer {self._cloud_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "user_id": caller_id,
+                        "agent_id": "crisis-memory-bridge",
+                        "query": query,
+                    },
+                    timeout=30.0,
                 )
-            return result if result else None
+                resp.raise_for_status()
+                data = resp.json()
+                # Build a readable summary from memU's structured response
+                return self._format_memu_response(data)
+            else:
+                result = self._service.retrieve(
+                    queries=[
+                        {"role": "user", "content": {"text": query}}
+                    ],
+                    where={"user_id": caller_id},
+                )
+                if isinstance(result, dict):
+                    return self._format_memu_response(result)
+                return str(result) if result else None
         except Exception as e:
             print(f"WARNING: memU retrieval failed ({e}), continuing without")
             return None
+
+    def _format_memu_response(self, data: dict) -> Optional[str]:
+        """Format memU retrieval response into readable context for LLM prompts."""
+        if not data:
+            return None
+        parts = []
+        # Items: extracted facts and profiles
+        items = data.get("items", [])
+        if items:
+            facts = [item.get("content", "") for item in items if item.get("content")]
+            if facts:
+                parts.append("Key facts: " + "; ".join(facts))
+        # Categories: topic summaries
+        categories = data.get("categories", [])
+        for cat in categories:
+            summary = cat.get("summary", "")
+            if summary:
+                parts.append(summary)
+        # Resources: conversation captions
+        resources = data.get("resources", [])
+        for res in resources:
+            caption = res.get("caption", "")
+            if caption:
+                parts.append(f"Session note: {caption}")
+        return "\n".join(parts) if parts else None
 
     def _store_to_memu(
         self, caller_id: str, volunteer_name: str, conversation: list
@@ -480,38 +533,56 @@ class HybridMemoryStore(BaseMemoryStore):
             for msg in conversation:
                 formatted.append({
                     "role": "user" if msg["role"] == "caller" else "assistant",
-                    "content": {"text": msg["content"]},
-                    "created_at": datetime.now().isoformat(),
+                    "content": msg["content"],
                 })
 
-            if self._memu_client:
-                self._memu_client.memorize_conversation(
-                    conversation=formatted,
-                    user_name=caller_id,
-                    agent_name=volunteer_name,
-                    user_id=caller_id,
-                    agent_id=f"volunteer_{volunteer_name}",
+            if self._mode == "cloud":
+                import httpx
+
+                resp = httpx.post(
+                    f"{self._cloud_base_url}/api/v3/memory/memorize",
+                    headers={
+                        "Authorization": f"Bearer {self._cloud_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "user_id": caller_id,
+                        "agent_id": f"volunteer_{volunteer_name}",
+                        "conversation": formatted,
+                    },
+                    timeout=60.0,
                 )
+                resp.raise_for_status()
+                result = resp.json()
+                task_id = result.get("task_id", "unknown")
+                print(f"memU: memorize task {task_id} ({result.get('status', '')})")
             else:
-                import asyncio
                 import tempfile
+
+                memu_formatted = []
+                for msg in conversation:
+                    memu_formatted.append({
+                        "role": "user" if msg["role"] == "caller" else "assistant",
+                        "content": {"text": msg["content"]},
+                        "created_at": datetime.now().isoformat(),
+                    })
 
                 with tempfile.NamedTemporaryFile(
                     mode="w", suffix=".json", delete=False
                 ) as f:
-                    json.dump(formatted, f)
+                    json.dump(memu_formatted, f)
                     temp_path = f.name
 
-                asyncio.get_event_loop().run_until_complete(
-                    self._memu_service.memorize(
-                        resource_url=temp_path,
-                        modality="conversation",
-                        user={"user_id": caller_id},
-                    )
+                self._service.memorize(
+                    resource_url=temp_path,
+                    modality="conversation",
+                    user={"user_id": caller_id},
                 )
                 os.unlink(temp_path)
         except Exception as e:
-            print(f"WARNING: memU store failed ({e}), structured data saved locally")
+            print(
+                f"WARNING: memU store failed ({e}), structured data saved locally"
+            )
 
     def get_caller_memory(self, caller_id: str) -> Optional[dict]:
         memory = self._local.get_caller_memory(caller_id)
