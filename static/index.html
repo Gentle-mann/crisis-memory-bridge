@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crisis Memory Bridge</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- Setup Screen -->
+  <div id="setup-screen" class="setup-screen">
+    <div class="setup-card">
+      <h1>Crisis Memory Bridge</h1>
+      <p class="subtitle">
+        Continuous care through AI-powered memory.
+        Volunteer context is preserved across sessions so callers
+        never have to re-explain their situation.
+      </p>
+
+      <div class="form-group">
+        <label>Volunteer Name</label>
+        <input type="text" id="volunteer-name" placeholder="e.g. Volunteer A" autofocus>
+      </div>
+
+      <div class="form-group">
+        <label>Caller ID</label>
+        <input type="text" id="caller-id" placeholder="e.g. caller-001">
+        <div class="hint">Use the same ID for returning callers to demonstrate memory handoff</div>
+      </div>
+
+      <div class="form-group">
+        <label>Language</label>
+        <div class="language-selector">
+          <button type="button" class="lang-btn lang-active" data-lang="en">EN</button>
+          <button type="button" class="lang-btn" data-lang="ja">JA</button>
+        </div>
+        <div class="hint">Caller AI will respond in the selected language</div>
+      </div>
+
+      <button id="start-btn" class="btn btn-primary">Start Session</button>
+      <a href="/supervisor" class="sup-link">Supervisor Dashboard</a>
+    </div>
+  </div>
+
+  <!-- Chat Screen -->
+  <div id="chat-screen" class="chat-screen">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="header-left">
+        <h2 id="header-title">Session</h2>
+        <span id="header-badge" class="badge" style="display:none"></span>
+      </div>
+      <div class="header-right">
+        <span id="session-timer" class="session-timer">00:00</span>
+        <span id="volunteer-tag" class="volunteer-tag"></span>
+      </div>
+    </div>
+
+    <!-- Main: Chat + Context -->
+    <div class="main-content">
+
+      <!-- Chat Panel -->
+      <div class="chat-panel">
+        <div id="messages" class="messages"></div>
+        <div id="typing-indicator" class="typing-indicator">Caller is typing...</div>
+        <div id="suggestions" class="suggestions"></div>
+        <div class="input-area">
+          <input type="text" id="message-input" placeholder="Type your response as the volunteer...">
+          <button id="mic-btn" class="btn-mic" title="Voice input">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </button>
+          <button id="send-btn" class="btn-send">Send</button>
+        </div>
+      </div>
+
+      <!-- Context Sidebar -->
+      <div class="context-panel">
+        <h3>Caller Context</h3>
+
+        <div id="session-diff" class="session-diff" style="display:none"></div>
+        <div id="briefing-block" class="briefing-block" style="display:none"></div>
+
+        <div id="timeline-container"></div>
+
+        <div id="context-empty" class="empty-state">
+          Context will appear here as the conversation progresses...
+        </div>
+
+        <div id="live-context"></div>
+        <div id="mood-arc"></div>
+      </div>
+
+    </div>
+
+    <!-- Session bar -->
+    <div class="session-bar">
+      <button id="export-btn" class="btn btn-secondary">Export Transcript</button>
+      <button id="end-btn" class="btn btn-danger">End Session & Save Memories</button>
+    </div>
+
+  </div>
+
+  <!-- Emergency Protocol Overlay -->
+  <div id="emergency-overlay" class="emergency-overlay">
+    <div class="emergency-card">
+      <div class="emergency-header">EMERGENCY PROTOCOL</div>
+      <p class="emergency-subtitle">Risk level has escalated to HIGH. Follow these steps:</p>
+      <ol class="emergency-checklist">
+        <li><label><input type="checkbox"> Ask: "Are you safe right now? Are you thinking about hurting yourself?"</label></li>
+        <li><label><input type="checkbox"> Assess: Do they have a plan? Access to means? A timeline?</label></li>
+        <li><label><input type="checkbox"> Identify: "Is there someone who can be with you right now?"</label></li>
+        <li><label><input type="checkbox"> Provide resources: Emergency 110 / Inochi no Denwa 0570-783-556 / TELL 03-5774-0992</label></li>
+        <li><label><input type="checkbox"> Plan: Agree on immediate next steps before ending the call</label></li>
+      </ol>
+      <button id="emergency-ack-btn" class="btn btn-danger">I Understand &mdash; Return to Session</button>
+    </div>
+  </div>
+
+  <!-- Extraction Overlay -->
+  <div id="extraction-overlay" class="extraction-overlay">
+    <div class="extraction-card">
+      <div class="spinner"></div>
+      <h3>Extracting Memories</h3>
+      <p>Analyzing conversation and saving structured memories for future volunteers...</p>
+      <div id="extraction-result"></div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

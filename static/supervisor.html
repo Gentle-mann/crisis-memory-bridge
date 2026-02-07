@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Supervisor Dashboard - Crisis Memory Bridge</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/supervisor.css">
+</head>
+<body class="supervisor-body">
+
+  <div class="sup-header">
+    <div class="sup-header-left">
+      <h1>Supervisor Dashboard</h1>
+      <span class="sup-subtitle">Multi-caller overview</span>
+    </div>
+    <a href="/" class="btn btn-primary sup-back-btn">Volunteer View</a>
+  </div>
+
+  <div class="sup-content">
+    <!-- Caller Cards Grid -->
+    <div id="caller-grid" class="caller-grid">
+      <div class="sup-loading">Loading callers...</div>
+    </div>
+
+    <!-- Detail Panel (shown when a caller is selected) -->
+    <div id="detail-panel" class="detail-panel" style="display:none">
+      <div class="detail-header">
+        <h2 id="detail-caller-id"></h2>
+        <button class="btn-close" onclick="closeDetail()">&times;</button>
+      </div>
+
+      <!-- Analytics Charts -->
+      <div id="analytics-section" class="analytics-section">
+        <h3>Risk Trend</h3>
+        <div id="risk-chart" class="chart-container"></div>
+        <h3>New Info Per Session</h3>
+        <div id="trigger-chart" class="chart-container"></div>
+      </div>
+
+      <!-- Timeline -->
+      <div id="detail-timeline" class="detail-timeline"></div>
+
+      <!-- Replay Section -->
+      <div id="replay-section" class="replay-section" style="display:none">
+        <div class="replay-header">
+          <h3>Session Replay</h3>
+          <button class="btn btn-danger replay-close" onclick="closeReplay()">Close</button>
+        </div>
+        <div id="replay-messages" class="replay-messages"></div>
+        <div class="replay-controls">
+          <button id="replay-play" class="btn btn-primary" onclick="toggleReplay()">Play</button>
+          <span id="replay-status" class="replay-status"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/supervisor.js"></script>
+</body>
+</html>
