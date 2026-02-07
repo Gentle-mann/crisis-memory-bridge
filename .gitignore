@@ -3,3 +3,9 @@
 data/
 __pycache__/
 .claude/
+.vercel/
+.dockerignore
+Dockerfile
+docker-compose.yml
+vercel.json
+DEPLOY.md
