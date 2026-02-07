@@ -136,6 +136,13 @@ async def stream_message(
         # Store the complete caller message in the session
         session["messages"].append({"role": "caller", "content": full_response})
 
+        # Signal caller response complete — frontend re-enables input immediately
+        stream_end_payload = json.dumps({
+            "type": "stream_end",
+            "caller_response": full_response,
+        })
+        yield f"data: {stream_end_payload}\n\n"
+
         # Extract live context, coaching, and suggestions in parallel
         lang = session.get("language", "en")
         live_context_task = asyncio.create_task(llm.extract_live_context(session["messages"], lang))

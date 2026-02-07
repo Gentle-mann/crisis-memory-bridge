@@ -454,14 +454,17 @@ async function sendMessage() {
           }
           callerTextEl.textContent += event.content;
           messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        } else if (event.type === "done") {
-          // Ensure typing indicator is hidden
+        } else if (event.type === "stream_end") {
+          // Caller response complete — re-enable input immediately
           showTyping(false);
-
-          // If no tokens were received (edge case), create the bubble with full text
           if (!callerBubble) {
             addMessage("caller", event.caller_response);
           }
+          state.sending = false;
+          sendBtn.disabled = false;
+          messageInput.focus();
+        } else if (event.type === "done") {
+          // Context, coaching, and suggestions arrived (async after stream_end)
 
           // Update live context sidebar
           updateLiveContext(event.live_context);
