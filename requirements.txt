@@ -3,4 +3,6 @@ uvicorn==0.30.6
 anthropic>=0.40.0
 python-dotenv==1.0.1
 httpx>=0.28.0
-memu-py>=1.2.0
+# memu-py is optional — only needed for self-hosted mode.
+# Cloud mode (MEMU_API_KEY) uses httpx directly.
+# Install manually: pip install memu-py
