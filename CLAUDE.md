@@ -167,7 +167,7 @@ The caller AI (Takeshi) has two prompt modes:
 
 ### Streaming Architecture
 
-The SSE endpoint (`GET /api/messages/stream`) streams caller response tokens, then sends a final `done` event with the full response and live context extraction.
+The SSE endpoint (`GET /api/messages/stream`) streams caller response tokens, then sends a `stream_end` event to re-enable input immediately, followed by a `done` event with context/coaching/suggestions after parallel LLM calls complete.
 
 ```
 Client                              Server
@@ -178,10 +178,13 @@ Client                              Server
   │←── data: {"type":"token","content":"..."}
   │←── data: {"type":"token","content":"yeah"}
   │                                    │── LLM stream ends
-  │                                    │── 3 parallel LLM calls (context + coaching + suggestions)
+  │←── data: {"type":"stream_end","caller_response":"..."}
+  │   (input re-enabled immediately)   │── 3 parallel LLM calls (context + coaching + suggestions)
   │←── data: {"type":"done","caller_response":"...","live_context":{...},"suggestions":[...]}
   │                                    │
 ```
+
+The `stream_end` / `done` split ensures the volunteer can start composing their next message immediately after the caller finishes speaking, while context extraction, coaching, and suggestions load asynchronously in the background (2-4 seconds later).
 
 The frontend uses `fetch()` with `ReadableStream` (not `EventSource`) to handle the SSE protocol, which allows better error handling and POST-like semantics via query params.
 
@@ -389,7 +392,7 @@ crisis-memory-bridge/
 
 ## Tech Stack
 
-- **Backend**: Python 3.14, FastAPI, uvicorn
+- **Backend**: Python 3.13, FastAPI, uvicorn
 - **Frontend**: Vanilla HTML/CSS/JS (no framework — speed over complexity)
 - **LLM**: Anthropic Claude Sonnet 4.5 via `anthropic` SDK (streaming)
 - **Memory**: Abstract `BaseMemoryStore` with hybrid architecture:
@@ -497,6 +500,20 @@ python3 -m uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 "Without memory, this caller would retell their trauma to every new volunteer. With memory, care is continuous. The volunteer changes. The context doesn't."
 
 "This pattern applies to any handoff: nursing shifts, caseworker turnover, refugee resettlement. Anywhere humans are passed between helpers, memory should persist."
+
+---
+
+## Deployment
+
+The application is deployed on **Railway** with persistent filesystem and long-running process support (required for SSE streaming and in-memory session state).
+
+- **GitHub**: https://github.com/Gentle-mann/crisis-memory-bridge
+- **Live Demo**: https://web-production-b1d2c.up.railway.app/
+
+Railway was chosen over Vercel/serverless because:
+- SSE streaming requires long-lived connections (serverless functions timeout at 10-30s)
+- In-memory session state (`sessions` dict) requires a persistent process
+- Local filesystem storage (`data/` directory) requires persistent disk
 
 ---
 
@@ -939,11 +956,10 @@ memU currently serves as a valuable **supplementary layer** — it catches what 
 
 ## Known Issues & Gotchas
 
-- **Python 3.14**: The `openai` SDK < 2.17.0 breaks on Python 3.14 (proxies kwarg issue with httpx). Must use `openai>=2.17.0`.
 - **max_tokens**: Extraction calls need high max_tokens (1500-2000) or the JSON gets truncated mid-response, causing parse failures. The caller response uses 500 which is fine for 1-3 sentences.
 - **JSON parsing**: The LLM sometimes wraps JSON in markdown fences despite being told not to. The code strips ``` fences before parsing. If parsing still fails, it falls back gracefully.
 - **Session state**: Active sessions are stored in a Python dict (`sessions`). Server restart loses active sessions (but saved memories in `data/` persist). This is fine for a demo.
-- **requirements.txt**: Still lists `openai` even though we use `anthropic` — the openai package was needed initially and doesn't hurt. Add `anthropic` to requirements before the hackathon.
+- **memu-py on Railway**: The `memu-py` package has native Rust extensions that fail to compile on Railway's Linux buildpack. The cloud mode uses `httpx` directly (no memu-py import needed), so `memu-py` is excluded from `requirements.txt`. Install it manually for local development if using self-hosted memU.
 
 ## Feature Roadmap
 
@@ -976,6 +992,7 @@ memU currently serves as a valuable **supplementary layer** — it catches what 
 - [x] Conversation export — Download transcript + context as formatted .txt file via client-side Blob, no server round-trip
 - [x] Sound notifications — Web Audio API oscillator tones: two-tone alert on risk escalation, soft chime on backgrounded-tab caller message
 - [x] Volunteer performance summary — Coaching stats at session end: exchange count, duration, score distribution bar, technique frequency tags
+- [x] Non-blocking input after streaming — `stream_end` SSE event re-enables volunteer input immediately after caller finishes speaking; context/coaching/suggestions load asynchronously 2-4s later
 
 **All features complete.**
 
